@@ -1,4 +1,5 @@
-﻿using System.Xml;
+﻿using System.Runtime.CompilerServices;
+using System.Xml;
 
 namespace BughouseChess.Core;
 
@@ -16,7 +17,7 @@ public static class MoveGenerator
     {
         public Side Side;
         public Position.Flag Flag;
-        public Bitboard EmptyMask;
+        public ulong EmptyMask;
         public int[] NotChecked;
         public int KingFrom;
         public int KingTo;
@@ -58,15 +59,10 @@ public static class MoveGenerator
             KingTo = 62,
         },
     };
-    
-    public static (int, int) RookCastleMove(int kingTo) => kingTo switch
-    {
-        2 => (0, 3),
-        6 => (7, 5),
-        58 => (56, 59),
-        62 => (63, 61),
-        _ => throw new ArgumentOutOfRangeException(nameof(kingTo), kingTo, null)
-    };
+
+    static readonly (ulong, ulong)[] RookCastleSqsTable = new (ulong, ulong)[63];
+
+    public static (ulong, ulong) RookCastleSqs(int kingTo) => RookCastleSqsTable[kingTo];
     public static Position.Flag RookCastleFlag(int rookFrom) => rookFrom switch
     {
         0 => Position.Flag.CastleRightsWQ,
@@ -76,17 +72,17 @@ public static class MoveGenerator
         _ => 0,
     };
     
-    static Bitboard[][] BishopTable;
-    static Bitboard[][] RookTable;
+    static ulong[][] BishopTable;
+    static ulong[][] RookTable;
     
-    static readonly Bitboard[] KnightMoves = new Bitboard[64];
-    static readonly Bitboard[] KingMoves = new Bitboard[64];
-    static readonly Bitboard[][] PawnAttacks = new Bitboard[64][];
+    static readonly ulong[] KnightMoves = new ulong[64];
+    static readonly ulong[] KingMoves = new ulong[64];
+    static readonly ulong[][] PawnAttacks = new ulong[64][];
     
     // public static void GenerateMagicBishopNumber()
     // {
-    //     Bitboard[] moveMasks = new Bitboard[64];
-    //     Bitboard[][] blockerMasks = new Bitboard[64][];
+    //     ulong[] moveMasks = new ulong[64];
+    //     ulong[][] blockerMasks = new ulong[64][];
     //     
     //     for (int i = 0; i < 64; i++)
     //     {
@@ -96,7 +92,7 @@ public static class MoveGenerator
     //
     //     Random rand = new Random();
     //     ulong[] magics = new ulong[64];
-    //     Bitboard[] exampleTable = new Bitboard[131072];
+    //     ulong[] exampleTable = new ulong[131072];
     //     for (int i = 0; i < 64; i++)
     //     {
     //         int bits = 15;
@@ -139,7 +135,7 @@ public static class MoveGenerator
 
         foreach (var s in Sides.All)
         {
-            PawnAttacks[(int)s] = new Bitboard[64];
+            PawnAttacks[(int)s] = new ulong[64];
             for (int from = 0; from < 64; from++)
             {
                 foreach (var offset in new [] {-1, 1})
@@ -151,15 +147,20 @@ public static class MoveGenerator
                 }
             }
         }
+
+        RookCastleSqsTable[2] = (Bitboard.FromIndex(0), Bitboard.FromIndex(3));
+        RookCastleSqsTable[6] = (Bitboard.FromIndex(7), Bitboard.FromIndex(5));
+        RookCastleSqsTable[58] = (Bitboard.FromIndex(56), Bitboard.FromIndex(59));
+        RookCastleSqsTable[62] = (Bitboard.FromIndex(63), Bitboard.FromIndex(61));
     }
 
-    static Bitboard[][] GenerateTable(int[] directions, ulong[] magics, int bits)
+    static ulong[][] GenerateTable(int[] directions, ulong[] magics, int bits)
     {
-        Bitboard[][] table = new Bitboard[64][];
+        ulong[][] table = new ulong[64][];
         for (int i = 0; i < 64; i++)
         {
-            table[i] = new Bitboard[1 << bits];
-            Bitboard moveMask = Walk(i, directions, false);
+            table[i] = new ulong[1 << bits];
+            ulong moveMask = Walk(i, directions, false);
             foreach (var blockerMask in GenerateBlockerMasks(moveMask))
                 table[i][blockerMask * magics[i] >> (64-bits)] = Walk(i, directions, false, blockerMask);            
         }
@@ -167,31 +168,31 @@ public static class MoveGenerator
         return table;
     }
     
-    static Bitboard[] GenerateBlockerMasks(Bitboard moveMask)
+    static ulong[] GenerateBlockerMasks(ulong moveMask)
     {
-        int n = (int)Math.Pow(2, moveMask.PopCount());
-        Bitboard[] blockerMasks = new Bitboard[n];
+        int n = (int)Math.Pow(2, Bitboard.PopCount(moveMask));
+        ulong[] blockerMasks = new ulong[n];
         for (int i = 0; i < n; i++)
         {
             // Copy the movement mask and index because we are going to change them, but we need the originals for the
             // next iteration.
-            Bitboard mm2 = moveMask;
+            ulong mm2 = moveMask;
             int i2 = i;
             while (mm2 != 0 && i2 != 0)
             {
                 // Shift the bits of i into the bits of the movement mask, bit by bit.
-                blockerMasks[i] |= (ulong)i2 << mm2.LSBIndex() & Bitboard.FromIndex(mm2.LSBIndex());
+                blockerMasks[i] |= (ulong)i2 << Bitboard.LSBIndex(mm2) & Bitboard.FromIndex(Bitboard.LSBIndex(mm2));
                 i2 >>= 1; // Use the next bit of i for the next iteration.
-                mm2 ^= Bitboard.FromIndex(mm2.LSBIndex()); // Move on to the next bit index.
+                mm2 ^= Bitboard.FromIndex(Bitboard.LSBIndex(mm2)); // Move on to the next bit index.
             }
         }
 
         return blockerMasks;
     }
 
-    static Bitboard Walk(int from, int[] directions, bool singleStep, Bitboard blockerMask = default)
+    static ulong Walk(int from, int[] directions, bool singleStep, ulong blockerMask = default)
     {
-        Bitboard result = 0;
+        ulong result = 0;
         int to, rankDiff, fileDiff;
         foreach (var direction in directions)
         {
@@ -210,7 +211,7 @@ public static class MoveGenerator
                     !(rankDiff == 2 && fileDiff == 1)) break;
                 
                 result |= Bitboard.FromIndex(to);
-                if (blockerMask.IsSet(to)) break;
+                if (Bitboard.IsSet(blockerMask, to)) break;
                 if (singleStep) break;
                 to += direction;
             }
@@ -219,20 +220,21 @@ public static class MoveGenerator
         return result;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void GeneratePawnAttacks(Position pos, List<Move> moves)
     {
-        Bitboard pawns = pos.State[(int)pos.Us()][(int)PieceType.Pawn];
+        ulong pawns = pos.State[(int)pos.Us()][(int)PieceType.Pawn];
         
         int from, to;
-        Bitboard atks;
+        ulong atks;
         while (pawns != 0)
         {
-            from = pawns.LSBIndex();
+            from = Bitboard.LSBIndex(pawns);
             atks = PawnAttacks[(int)pos.Us()][from] & pos.Occupancy[(int)pos.Opp()];
             atks &= pos.Us() == Side.White ? Bitboard.NotRank8 : Bitboard.NotRank1;
             while (atks != 0)
             {
-                to = atks.LSBIndex();
+                to = Bitboard.LSBIndex(atks);
                 atks ^= Bitboard.FromIndex(to);
                 moves.Add(new Move(from, to, PieceType.Pawn, Move.Flag.Capture, PieceType.None));
             }
@@ -241,66 +243,71 @@ public static class MoveGenerator
         }
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void GeneratePawnMoves(Position pos, List<Move> moves)
     {
-        Bitboard oneForward = pos.PawnPush(pos.State[(int)pos.Us()][(int)PieceType.Pawn]) & ~pos.Occupancy[(int)Side.Both];
-        Bitboard twoForward = pos.PawnPush(oneForward & (pos.Us() == Side.White ? Bitboard.Rank3 : Bitboard.Rank6));
+        ulong oneForward = pos.PawnPush(pos.State[(int)pos.Us()][(int)PieceType.Pawn]) & ~pos.Occupancy[(int)Side.Both];
+        ulong twoForward = pos.PawnPush(oneForward & (pos.Us() == Side.White ? Bitboard.Rank3 : Bitboard.Rank6) & ~pos.Occupancy[(int)Side.Both]);
         oneForward &= pos.Us() == Side.White ? Bitboard.NotRank8 : Bitboard.NotRank1;
 
         int from, to;
         while (oneForward != 0)
         {
-            to = oneForward.LSBIndex();
+            to = Bitboard.LSBIndex(oneForward);
             from = to - pos.PawnPush();
             moves.Add(new Move(from, to, PieceType.Pawn, Move.Flag.None, PieceType.None));
-            if (twoForward.IsSet(to + pos.PawnPush()))
+            if (Bitboard.IsSet(twoForward, to + pos.PawnPush()))
                 moves.Add(new Move(from, to + pos.PawnPush(), PieceType.Pawn, Move.Flag.None, PieceType.None));
             oneForward ^= Bitboard.FromIndex(to);
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void GeneratePromotions(Position pos, List<Move> moves)
     {
-        Bitboard pawns = pos.State[(int)pos.Us()][(int)PieceType.Pawn];
+        ulong pawns = pos.State[(int)pos.Us()][(int)PieceType.Pawn];
         pawns &= pos.Us() == Side.White ? Bitboard.Rank7 : Bitboard.Rank2;
-        Bitboard oneForward = pos.PawnPush(pawns) & ~pos.Occupancy[(int)Side.Both];
+        ulong oneForward = pos.PawnPush(pawns) & ~pos.Occupancy[(int)Side.Both];
 
         int from, to;
-        Bitboard atks;
+        ulong atks;
         while (pawns != 0)
         {
-            from = pawns.LSBIndex();
+            from = Bitboard.LSBIndex(pawns);
             atks = PawnAttacks[(int)pos.Us()][from] & pos.Occupancy[(int)pos.Opp()];
             while (atks != 0)
             {
-                to = atks.LSBIndex();
+                to = Bitboard.LSBIndex(atks);
                 foreach (var pt in PromotionTypes)
                     moves.Add(new Move(from, to, PieceType.Pawn, Move.Flag.Capture|Move.Flag.Promotion, pt));
                 atks ^= Bitboard.FromIndex(to);
             }
 
             to = from + pos.PawnPush();
-            if (oneForward.IsSet(to))
+            if (Bitboard.IsSet(oneForward, to))
                 foreach (var pt in PromotionTypes)
                     moves.Add(new Move(from, to, PieceType.Pawn, Move.Flag.Promotion, pt));
             pawns ^= Bitboard.FromIndex(from);
         }
     }
 
+    static readonly int[] _epos = { -1, 1 };
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void GenerateEnPassant(Position pos, List<Move> moves)
     {
         if (pos.EnPassantCapturable() == null) return;
         int capturable = (int)pos.EnPassantCapturable()!;
-        Bitboard pawns = pos.State[(int)pos.Us()][(int)PieceType.Pawn];
+        ulong pawns = pos.State[(int)pos.Us()][(int)PieceType.Pawn];
         int from;
-        foreach (var offset in new []{-1, 1})
+        foreach (var offset in _epos)
         {
             from = capturable + offset;
-            if (pawns.IsSet(from) || Bitboard.Rank(capturable) != Bitboard.Rank(from)) continue;
+            if (!Bitboard.IsSet(pawns, from) || Bitboard.Rank(capturable) != Bitboard.Rank(from)) continue;
             moves.Add(new Move(from, capturable + pos.PawnPush(), PieceType.Pawn, Move.Flag.EnPassant, PieceType.None));
         }
     }
-
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void GenerateCastles(Position pos, List<Move> moves)
     {
         if (!pos.HasFlag(pos.Us() == Side.White ? Position.Flag.CastleRightsW : Position.Flag.CastleRightsB)) return;
@@ -317,15 +324,16 @@ public static class MoveGenerator
         }
         
     }
-
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void GeneratePieceMoves(Position pos, List<Move> moves, PieceType pt, bool capturesOnly = false)
     {
-        Bitboard pieces = pos.State[(int)pos.Us()][(int)pt];
+        ulong pieces = pos.State[(int)pos.Us()][(int)pt];
         int from, to;
-        Bitboard moveMask, captureMask, occupancy;
+        ulong moveMask, captureMask, occupancy;
         while (pieces != 0)
         {
-            from = pieces.LSBIndex();
+            from = Bitboard.LSBIndex(pieces);
             switch (pt)
             {
                 case PieceType.Knight:
@@ -356,7 +364,7 @@ public static class MoveGenerator
 
             while (captureMask != 0)
             {
-                to = captureMask.LSBIndex();
+                to = Bitboard.LSBIndex(captureMask);
                 moves.Add(new Move(from, to, pt, Move.Flag.Capture, PieceType.None));
                 captureMask ^= Bitboard.FromIndex(to);
             }
@@ -369,26 +377,26 @@ public static class MoveGenerator
             
             while (moveMask != 0)
             {
-                to = moveMask.LSBIndex();
+                to = Bitboard.LSBIndex(moveMask);
                 moves.Add(new Move(from, to, pt, 0, PieceType.None));
                 moveMask ^= Bitboard.FromIndex(to);
             }
             pieces ^= Bitboard.FromIndex(from);
         }
     }
-
+    
     public static void GenerateAllMoves(Position pos, List<Move> moves)
     {
-        GeneratePawnMoves(pos, moves);
         GeneratePawnAttacks(pos, moves);
         GeneratePromotions(pos, moves);
-        GenerateCastles(pos, moves);
         GenerateEnPassant(pos, moves);
         GeneratePieceMoves(pos, moves, PieceType.Knight);
         GeneratePieceMoves(pos, moves, PieceType.Bishop);
         GeneratePieceMoves(pos, moves, PieceType.Rook);
         GeneratePieceMoves(pos, moves, PieceType.Queen);
         GeneratePieceMoves(pos, moves, PieceType.King);
+        GenerateCastles(pos, moves);
+        GeneratePawnMoves(pos, moves);
     }
 
     public static void GenerateCapturesAndPromotions(Position pos, List<Move> moves)
@@ -402,38 +410,60 @@ public static class MoveGenerator
         GeneratePieceMoves(pos, moves, PieceType.Queen, true);
         GeneratePieceMoves(pos, moves, PieceType.King, true);
     }
-
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsChecked(Position pos) =>
-        IsChecked(pos, pos.Us(), pos.State[(int)pos.Us()][(int)PieceType.King].LSBIndex());
+        IsChecked(pos, pos.Us(), Bitboard.LSBIndex(pos.State[(int)pos.Us()][(int)PieceType.King]));
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsChecked(Position pos, Side s, int from)
     {
-        Bitboard moveMask, occupancy;
+        ulong moveMask, occupancy;
+        int opp = (int)Position.OppOf(s);
         
         // Bishop and queen checks.
         occupancy = pos.Occupancy[(int)Side.Both] & BishopTable[from][0];
         moveMask = BishopTable[from][occupancy * Magics.Bishop14[from] >> 50];
-        moveMask &= pos.State[(int)Position.OppOf(s)][(int)PieceType.Bishop] | pos.State[(int)Position.OppOf(s)][(int)PieceType.Queen];
+        moveMask &= pos.State[opp][(int)PieceType.Bishop] | pos.State[opp][(int)PieceType.Queen];
         if (moveMask != 0) return true;
         
         // Rook and queen checks.
         occupancy = pos.Occupancy[(int)Side.Both] & RookTable[from][0];
         moveMask = RookTable[from][occupancy * Magics.Rook14[from] >> 50];
-        moveMask &= pos.State[(int)Position.OppOf(s)][(int)PieceType.Rook] | pos.State[(int)Position.OppOf(s)][(int)PieceType.Queen];
+        moveMask &= pos.State[opp][(int)PieceType.Rook] | pos.State[opp][(int)PieceType.Queen];
         if (moveMask != 0) return true;
         
         // Knight checks.
-        moveMask = KnightMoves[from] & pos.State[(int)Position.OppOf(s)][(int)PieceType.Knight];
+        moveMask = KnightMoves[from] & pos.State[opp][(int)PieceType.Knight];
         if (moveMask != 0) return true;
         
         // Pawn checks.
-        moveMask = PawnAttacks[(int)s][from] & pos.State[(int)Position.OppOf(s)][(int)PieceType.Pawn];
+        moveMask = PawnAttacks[(int)s][from] & pos.State[opp][(int)PieceType.Pawn];
         if (moveMask != 0) return true;
         
         // King checks (used for move legality check)
-        moveMask = KingMoves[from] & pos.State[(int)Position.OppOf(s)][(int)PieceType.King];
+        moveMask = KingMoves[from] & pos.State[opp][(int)PieceType.King];
         return moveMask != 0;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsLegal(Position pos) => 
-        !IsChecked(pos, pos.Opp(), pos.State[(int)pos.Opp()][(int)PieceType.King].LSBIndex());
+        !IsChecked(pos, pos.Opp(), Bitboard.LSBIndex(pos.State[(int)pos.Opp()][(int)PieceType.King]));
+
+    
+    public static List<Move> GenerateAllLegalMoves(Position pos)
+    {
+        List<Move> moves = new (200);
+        List<Move> legalMoves = new(200);
+        GenerateAllMoves(pos, moves);
+        Position head = Position.Empty();
+        foreach (var move in moves)
+        {
+            head.CopyFrom(pos);
+            head.ApplyMove(move);
+            if (IsLegal(head)) legalMoves.Add(move);
+        }
+
+        return legalMoves;
+    }
 }

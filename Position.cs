@@ -1,4 +1,6 @@
-﻿namespace BughouseChess.Core;
+﻿using System.Runtime.CompilerServices;
+
+namespace BughouseChess.Core;
 
 // Represents a single chess position. A new one is created with each move. The index works as follows:
 // 
@@ -22,13 +24,14 @@
 //
 public struct Position
 {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ulong TTHash()
     {
         var res = 0xcbf29ce484222325; // 64 bit FNV_offset_basis
         unchecked
         {
-            foreach (Bitboard[] side in State)
-                foreach (Bitboard bb in side)
+            foreach (ulong[] side in State)
+                foreach (ulong bb in side)
                     res = (res ^ bb) * 0x100000001b3; // 64 bit FNV_prime
             return res ^ (ulong)_flags ^ _enPassantCapturable;
         }
@@ -46,13 +49,18 @@ public struct Position
         CastleRightsB = CastleRightsBQ | CastleRightsBK,
     }
     
-    public Bitboard[][] State;
-    public Bitboard[] Occupancy;
+    public ulong[][] State;
+    public ulong[] Occupancy;
     Flag _flags;
     byte _enPassantCapturable;
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Side Us() => HasFlag(Flag.BlackTurn) ? Side.Black : Side.White;
-    public Side Opp() => 1 - Us();
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Side Opp() => HasFlag(Flag.BlackTurn) ? Side.White : Side.Black;
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Side OppOf(Side s) => 1 - s;
 
     public void GenerateOccupancy()
@@ -66,17 +74,21 @@ public struct Position
         Occupancy[(int)Side.Both] = Occupancy[(int)Side.White] | Occupancy[(int)Side.Black];
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool HasFlag(Flag f) => (_flags & f) != 0;
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public PieceType GetPieceType(Side s, int i)
     {
         foreach (var pt in PieceTypes.NotNone)
-            if (State[(int)s][(int)pt].IsSet(i)) return pt;
+            if (Bitboard.IsSet(State[(int)s][(int)pt], i)) return pt;
         return PieceType.None;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int? EnPassantCapturable() => _enPassantCapturable < 64 ? _enPassantCapturable : null;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     void SetEnPassantCapturable(int? i)
     {
         _enPassantCapturable = i != null ? (byte)i : (byte)64;
@@ -91,7 +103,7 @@ public struct Position
             for (int file = 0; file < 8; file++)
             {
                 int i = Bitboard.Index(file, rank);
-                Side s = Occupancy[(int)Side.White].IsSet(i) ? Side.White : Side.Black;
+                Side s = Bitboard.IsSet(Occupancy[(int)Side.White], i) ? Side.White : Side.Black;
                 PieceType pt = GetPieceType(s, i);
                 char sym = "pnbrqk."[(int)pt];
                 o += s == Side.White ? sym.ToString().ToUpper() : sym.ToString();
@@ -106,57 +118,66 @@ public struct Position
         return o;
     }
 
-    public Bitboard PawnPush(Bitboard bb) => Us() == Side.White ? bb << 8 : bb >> 8;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ulong PawnPush(ulong bb) => Us() == Side.White ? bb << 8 : bb >> 8;
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int PawnPush() => PawnPush(Us());
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int PawnPush(Side s) => s == Side.White ? 8 : -8;
 
     public void ApplyMove(Move move)
     {
         Move.Flag f = move.GetFlags();
         PieceType pt = move.GetPieceType();
+        int us = (int)Us();
         int from = move.GetFrom();
         int to = move.GetTo();
+        ulong fromSq = Bitboard.FromIndex(from);
+        ulong toSq = Bitboard.FromIndex(to);
 
-        if (pt == PieceType.Pawn && Math.Abs(to-from) > 8)
+        if (pt == PieceType.Pawn && Math.Abs(to-from) == 16)
             SetEnPassantCapturable(to);
         else SetEnPassantCapturable(null);
         // If this is a capturing move, remove opponent's piece.
         if (Move.HasFlag(f, Move.Flag.Capture | Move.Flag.EnPassant))
         {
-            int captured = to;
-            if (Move.HasFlag(f, Move.Flag.EnPassant)) captured -= PawnPush(); // Capture the piece behind the pawn.
-            State[(int)Opp()][(int)GetPieceType(Opp(), captured)] ^= Bitboard.FromIndex(captured);
+            int capIdx = to;
+            if (Move.HasFlag(f, Move.Flag.EnPassant)) capIdx -= PawnPush(); // Capture the piece behind the pawn.
+            State[(int)Opp()][(int)GetPieceType(Opp(), capIdx)] &= ~Bitboard.FromIndex(capIdx);
             
             // Make captured position in opponent occupancy map empty.
-            Occupancy[(int)Opp()] &= ~Bitboard.FromIndex(captured);
+            Occupancy[(int)Opp()] &= ~Bitboard.FromIndex(capIdx);
+            Occupancy[(int)Side.Both] &= ~Bitboard.FromIndex(capIdx);
         }
         
         // Move our piece.
-        State[(int)Us()][(int)pt] ^= Bitboard.FromIndex(from); // Remove our piece from its initial position.
+        State[us][(int)pt] &= ~fromSq; // Remove our piece from its initial position.
 
         // Change piece type in case of promotion.
         if (Move.HasFlag(f, Move.Flag.Promotion)) pt = move.GetPromotion();
         
-        State[(int)Us()][(int)pt] |= Bitboard.FromIndex(to); // Place our piece in the new position.
+        State[us][(int)pt] |= toSq; // Place our piece in the new position.
 
         if (Move.HasFlag(f, Move.Flag.Castle))
         {
-            (int, int) fromTo = MoveGenerator.RookCastleMove(to);
+            (ulong, ulong) fromTo = MoveGenerator.RookCastleSqs(to);
             
             // Remove rook
-            State[(int)Us()][(int)PieceType.Rook] ^= Bitboard.FromIndex(fromTo.Item1);
-            Occupancy[(int)Side.Both] &= ~Bitboard.FromIndex(fromTo.Item1);
-            Occupancy[(int)Us()] &= ~Bitboard.FromIndex(fromTo.Item1);
+            State[us][(int)PieceType.Rook] &= ~fromTo.Item1;
+            Occupancy[(int)Side.Both] &= ~fromTo.Item1;
+            Occupancy[us] &= ~fromTo.Item1;
             
             // Place rook
-            State[(int)Us()][(int)PieceType.Rook] |= Bitboard.FromIndex(fromTo.Item2);
-            Occupancy[(int)Side.Both] |= Bitboard.FromIndex(fromTo.Item2);
-            Occupancy[(int)Us()] |= Bitboard.FromIndex(fromTo.Item2);
+            State[us][(int)PieceType.Rook] |= fromTo.Item2;
+            Occupancy[(int)Side.Both] |= fromTo.Item2;
+            Occupancy[us] |= fromTo.Item2;
             
             _flags &= Us() == Side.White ? ~Flag.CastleRightsW : ~Flag.CastleRightsB;
         }
 
-        switch (move.GetPieceType())
+        switch (pt)
         {
             case PieceType.King:
                 _flags &= Us() == Side.White ? ~Flag.CastleRightsW : ~Flag.CastleRightsB;
@@ -167,35 +188,42 @@ public struct Position
         }
         
         // Make initial position in general occupancy map empty.
-        Occupancy[(int)Side.Both] &= ~Bitboard.FromIndex(from);
+        Occupancy[(int)Side.Both] &= ~fromSq;
         
         // Make initial position in friendly side occupancy map empty.
-        Occupancy[(int)Us()] &= ~Bitboard.FromIndex(from);
+        Occupancy[us] &= ~fromSq;
         
         // Fill new position in friendly side occupancy map.
-        Occupancy[(int)Us()] |= Bitboard.FromIndex(to);
+        Occupancy[us] |= toSq;
         
         // Fill new position in general occupancy map.
-        Occupancy[(int)Side.Both] |= Bitboard.FromIndex(to);
+        Occupancy[(int)Side.Both] |= toSq;
 
         _flags ^= Flag.BlackTurn; // Flip turn flag.
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void CopyFrom(Position other)
+    {
+        Buffer.BlockCopy(other.State[(int)Side.White], 0, State[(int)Side.White], 0, 48);
+        Buffer.BlockCopy(other.State[(int)Side.Black], 0, State[(int)Side.Black], 0, 48);
+        Buffer.BlockCopy(other.Occupancy, 0, Occupancy, 0, 24);
+        _enPassantCapturable = other._enPassantCapturable;
+        _flags = other._flags;
+    }
+    
+    public static Position Empty()
+    {
+        return new Position()
+        {
+            State = new [] { new ulong[6], new ulong[6] }, 
+            Occupancy = new ulong[3],
+        };
+    }
     public Position DeepClone()
     {
-        Position clone = this with
-        {
-            State = new [] { Array.Empty<Bitboard>(), Array.Empty<Bitboard>() }, 
-            Occupancy = new Bitboard[3],
-        };
-        foreach (var s in Sides.All)
-        {
-            clone.State[(int)s] = new Bitboard[6];
-            foreach (var pt in PieceTypes.NotNone)
-                clone.State[(int)s][(int)pt] = State[(int)s][(int)pt];
-        }
-        for (int i = 0; i < Occupancy.Length; i++)
-            clone.Occupancy[i] = Occupancy[i];
+        Position clone = Empty();
+        clone.CopyFrom(this);
         return clone;
     }
     
@@ -203,12 +231,12 @@ public struct Position
     {
         Position p = new()
         {
-            State = new [] { Array.Empty<Bitboard>(), Array.Empty<Bitboard>() },
+            State = new [] { Array.Empty<ulong>(), Array.Empty<ulong>() },
             _enPassantCapturable = 64,
             _flags = Flag.CastleRightsWQ | Flag.CastleRightsWK | Flag.CastleRightsBQ | Flag.CastleRightsBK,
-            Occupancy = new Bitboard[3],
+            Occupancy = new ulong[3],
         };
-        p.State[(int)Side.White] = new Bitboard[] {
+        p.State[(int)Side.White] = new ulong[] {
             0b11111111UL << 8, // White pawns
             0b01000010UL, // White knights
             0b00100100UL, // White bishops
@@ -216,7 +244,7 @@ public struct Position
             0b00001000UL, // White queen
             0b00010000UL, // White king
         };
-        p.State[(int)Side.Black] = new Bitboard[] {
+        p.State[(int)Side.Black] = new ulong[] {
             0b11111111UL << 48, // Black pawns
             0b01000010UL << 56, // Black knights
             0b00100100UL << 56, // Black bishops
@@ -226,6 +254,56 @@ public struct Position
         };
         p.GenerateOccupancy();
         return p;
+    }
+
+    public static Position FromFEN(string fen)
+    {
+        Position pos = Empty();
+
+        string[] parts = fen.Split(' ');
+        string[] ranks = parts[0].Split('/');
+        Array.Reverse(ranks); // Needs to start from rank 1 and increase
+
+        for (int r = 0; r < 8; ++r)
+        {
+            int f = 0;
+            foreach (var c in ranks[r])
+            {
+                if (char.IsDigit(c))
+                {
+                    f += int.Parse(c.ToString());
+                    continue;
+                }
+                PieceType pt;
+                Side side;
+                switch (char.ToLower(c))
+                {
+                    case 'p': pt = PieceType.Pawn; break;
+                    case 'n': pt = PieceType.Knight; break;
+                    case 'b': pt = PieceType.Bishop; break;
+                    case 'r': pt = PieceType.Rook; break;
+                    case 'q': pt = PieceType.Queen; break;
+                    case 'k': pt = PieceType.King; break;
+                    default: throw new Exception("Invalid character encountered in FEN string.");
+                }
+                side = char.IsLower(c) ? Side.Black : Side.White;
+                pos.State[(int)side][(int)pt] |= Bitboard.FromIndex(Bitboard.Index(f, r));
+                pos.Occupancy[(int)side] |= Bitboard.FromIndex(Bitboard.Index(f, r));
+                f++;
+            }
+        }
+
+        pos.GenerateOccupancy();
+
+        pos._flags |= parts[1] == "w" ? 0 : Flag.BlackTurn;
+        if (parts[2].Contains("K")) pos._flags |= Flag.CastleRightsWK;
+        if (parts[2].Contains("Q")) pos._flags |= Flag.CastleRightsWQ;
+        if (parts[2].Contains("k")) pos._flags |= Flag.CastleRightsBK;
+        if (parts[2].Contains("q")) pos._flags |= Flag.CastleRightsBQ;
+
+        if (parts[3] != "-") pos.SetEnPassantCapturable(Bitboard.UCIToIndex(parts[3]));
+
+        return pos;
     }
 }
 
