@@ -1,6 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 
-namespace ArexMotor;
+namespace Alexvis;
 
 public static class Zobrist
 {

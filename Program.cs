@@ -1,27 +1,10 @@
 ﻿using System.Collections.Concurrent;
 
-namespace ArexMotor;
+namespace Alexvis;
 
 class Program
 {
-    // public static void Main()
-    // {
-    //     Position pos = Position.FromFEN("r1bqkb1r/1ppp1ppp/p1n2n2/4p3/B3P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 3 5");
-    //     MoveGenerator.Init();
-    //     Console.WriteLine("tables initialized");
-    //     DateTime start = DateTime.Now;
-    //     // Console.WriteLine(NegaScout.Eval(pos, 6));
-    //     var res = NegaScout.GenerateMove(pos, 5);
-    //     Console.WriteLine($"best move (value {res.Item1}) {res.Item2.GetFrom()} {res.Item2.GetTo()}, flags {res.Item2.GetFlags()}, promo {res.Item2.GetPromotion()}");
-    //     Console.WriteLine($"{DateTime.Now.Subtract(start).TotalMilliseconds} ms");
-    //     // List<Move> moves = new(200);
-    //     // MoveGenerator.GenerateAllMoves(pos, moves);
-    //     // foreach (var move in moves)
-    //     // {
-    //     //     Console.WriteLine($"{move.GetFrom()}, {move.GetTo()}, flags {move.GetFlags()}, promo {move.GetPromotion()}");
-    //     // }
-    // }
-    
+   
     public static void Main()
     {
         Position pos = Position.StartingPosition();
@@ -35,7 +18,7 @@ class Program
             if (parts.Length == 0) continue;
             if (parts[0] == "uci")
             {
-                Console.WriteLine("id name ArexMotor\nid author C.F. Schilham\nuciok");
+                Console.WriteLine("id name Alexvis\nid author C.F. Schilham\nuciok");
             }
             else if (parts[0] == "isready") Console.WriteLine("readyok");
             else if (parts.Length == 1 && parts[0] == "position") pos = Position.StartingPosition();

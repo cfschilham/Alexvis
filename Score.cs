@@ -1,8 +1,8 @@
 ﻿using System.Runtime.CompilerServices;
 
-namespace ArexMotor;
+namespace Alexvis;
 
-public static class Heuristic
+public static class Score
 {
     static readonly int[] MaterialValueTable = { 100, 300, 315, 500, 900 };
 
@@ -82,7 +82,7 @@ public static class Heuristic
         },
     };
 
-    static Heuristic()
+    static Score()
     {
         // Because the top left is the 0-index in the preset arrays, they need to be reversed for the white perspective.
         // They can remain intact for the black perspective.
@@ -92,33 +92,35 @@ public static class Heuristic
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static int PiecePositionValue(Side s, PieceType pt, int i) => PiecePositionValueTable[(s == Side.White ? 0 : 6) + (int)pt][i];
     
-    public static int Eval(Position pos, int numMoves)
+    public static int Static(Position pos, Span<Move> moves, int mslen)
     {
-        if (numMoves == 0)
-        {
-            if (MoveGenerator.IsChecked(pos))
-                return int.MinValue;
-            return 0;
-        }
-        
         int value = 0;
         ulong st;
+        int us = (int)pos.Us();
         int idx;
         
         foreach (var side in Sides.NotBoth)
             foreach (var pt in PieceTypes.NotNone)
             {
                 st = pos.State[(int)side][(int)pt];
-                if (pt != PieceType.King) value += MaterialValueTable[(int)pt] * BB.PopCount(st) * (pos.Us() == side ? 1 : -1);
+                if (pt != PieceType.King) value += MaterialValueTable[(int)pt] * BB.PopCount(st) * (us == (int)side ? 1 : -1);
 
                 while (st != 0)
                 {
                     idx = BB.LSBIndex(st);
-                    value += PiecePositionValue(side, pt, idx) * (pos.Us() == side ? 1 : -1);
+                    value += PiecePositionValue(side, pt, idx) * (us == (int)side ? 1 : -1);
                     st ^= BB.FromIndex(idx);
                 }
             }
 
-        return value;
+        if (mslen == -1) value += BB.PopCount(pos.Occupancy[us]) * 2; // Estimation in case we don't know the available moves.
+        for (int i = 0; i < mslen; i++)
+            if (moves[i].HasFlag(Move.Flag.Capture)) value++;
+
+        return value + mslen;
     }
+
+    public static int FromMatePly(int ply) => -1000000000 + ply;
+    public static int ToMatePly(int score) => 1000000000 - Math.Abs(score);
+    public static bool IsMate(int score) => Math.Abs(score) > 999000000;
 }

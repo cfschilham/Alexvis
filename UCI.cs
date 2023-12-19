@@ -1,4 +1,4 @@
-﻿namespace ArexMotor;
+﻿namespace Alexvis;
 
 public static class UCI
 {

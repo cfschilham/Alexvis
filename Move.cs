@@ -1,6 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 
-namespace ArexMotor;
+namespace Alexvis;
 
 public struct Move
 {
@@ -16,7 +16,7 @@ public struct Move
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool HasFlag(Flag f) => (GetFlags() & f) != 0;
+    public bool HasFlag(Flag f) => (_data & (int)f) != 0;
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool HasFlag(Flag flags, Flag f) => (flags & f) != 0;
@@ -24,7 +24,7 @@ public struct Move
     uint _data;
     
     public Move(int from, int to, PieceType pt, Flag flags, PieceType promotion) =>
-        _data += (uint)from << 26 | (uint)to << 20 | (uint)pt << 17 | (uint)flags << 13 | (uint)promotion << 10;
+        _data += (uint)from << 26 | (uint)to << 20 | (uint)pt << 17 | (uint)promotion << 14 | (uint)flags;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int GetFrom() => (int)(_data >> 26);
@@ -36,10 +36,10 @@ public struct Move
     public PieceType GetPieceType() => (PieceType)(_data >> 17 & 0b111);
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Flag GetFlags() => (Flag)(_data >> 13 & 0b1111);
+    public Flag GetFlags() => (Flag)(_data & 0b1111);
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public PieceType GetPromotion() => (PieceType)(_data >> 10 & 0b111);
+    public PieceType GetPromotion() => (PieceType)(_data >> 14 & 0b111);
     
     public bool Equals(Move other) => _data == other._data;
     public override bool Equals(object? obj) => obj is Move other && Equals(other);

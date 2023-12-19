@@ -1,7 +1,7 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Xml;
 
-namespace ArexMotor;
+namespace Alexvis;
 
 public static class MoveGenerator
 {

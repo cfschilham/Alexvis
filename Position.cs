@@ -1,6 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 
-namespace ArexMotor;
+namespace Alexvis;
 
 // Represents a single chess position. A new one is created with each move. The index works as follows:
 // 

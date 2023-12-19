@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArexMotor", "ArexMotor.csproj", "{1C47B29B-6364-4429-95F1-4A94321F2340}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Alexvis", "Alexvis.csproj", "{1C47B29B-6364-4429-95F1-4A94321F2340}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

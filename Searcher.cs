@@ -1,6 +1,6 @@
 ﻿using System.Collections.Concurrent;
 
-namespace ArexMotor;
+namespace Alexvis;
 
 public class Searcher(TranspositionTable tt)
 {
@@ -8,11 +8,54 @@ public class Searcher(TranspositionTable tt)
     volatile bool Stop;
     public void RequestStop() => Stop = true;
 
-    // public static int Quiesce(Position pos, int depth, PositionStack ps, int a, int b)
-    // {
-    //     
-    //     int heuristic = Heuristic.Eval(pos);
-    // }
+    public int Quiesce(Position pos, int depth, int ply, PositionStack ps, int a, int b)
+    {
+        nodesSearched++;
+        if (depth == 0) return Score.Static(pos, null, -1);
+        
+        int mslen;
+        Span <Move> moves = stackalloc Move[200];
+        bool isChecked = MoveGenerator.IsChecked(pos);
+        if (!isChecked)
+        {
+            int stnd = Score.Static(pos, null, -1);
+            if (stnd >= b) return b;
+            if (stnd > a) a = stnd;
+            
+            mslen = MoveGenerator.GenerateCapturesAndPromotions(pos, moves);
+            if (mslen == 0) return a;
+        }
+        else mslen = MoveGenerator.GenerateAllMoves(pos, moves);
+        
+        ps.Push(pos);
+        int value;
+        int numChildren = 0;
+        for (int i = 0; i < mslen; i++)
+        {
+            pos.ApplyMove(moves[i]);
+            if (!MoveGenerator.IsLegal(pos))
+            {
+                ps.ApplyTop(ref pos);
+                continue;
+            }
+
+            numChildren++;
+            value = -Quiesce(pos, depth - 1, ply + 1, ps, -b, -a);
+            ps.ApplyTop(ref pos);
+            if (value > a) a = value;
+            if (value >= b)
+            {
+                ps.Pop();
+                return b;
+            }
+        }
+        ps.Pop();
+        
+        // Stalemate can't be detected because if we're not in check, we don't generate all moves and thus we don't
+        // perform a full search.
+        if (numChildren == 0 && isChecked) Score.FromMatePly(ply);
+        return a;
+    }
 
     public void OrderMoves(Move prevBest, Span<Move> moves, int len)
     {
@@ -44,13 +87,13 @@ public class Searcher(TranspositionTable tt)
         int mslen = MoveGenerator.GenerateAllMoves(pos, moves);
         
         if (depth == 0) 
-            return Heuristic.Eval(pos, mslen);
+            return Quiesce(pos, 15, ply, ps, a, b);
         
         if (ok && !te.Move.Equals(Move.NullMove)) OrderMoves(te.Move, moves, mslen);
         
         ps.Push(pos);
         int numChildren = 0;
-        int value = int.MinValue;
+        int value = 0;
         Move bestMove = Move.NullMove;
         TranspositionTable.Bound bound = TranspositionTable.Bound.Upper;
         for (int i = 0; i < mslen; i++)
@@ -58,7 +101,7 @@ public class Searcher(TranspositionTable tt)
             if (Stop)
             {
                 ps.Pop();
-                return Heuristic.Eval(pos, mslen);
+                return Score.Static(pos, moves, mslen);
             }
             
             pos.ApplyMove(moves[i]);
@@ -68,7 +111,7 @@ public class Searcher(TranspositionTable tt)
                 continue;
             }
             numChildren++;
-            value = Math.Max(value, -Eval(pos, depth - 1, ps, ply + 1, -b, -a));
+            value = -Eval(pos, depth - 1, ps, ply + 1, -b, -a);
             ps.ApplyTop(ref pos);
 
             if (value > a) // New best (PV) node has been found.
@@ -79,7 +122,7 @@ public class Searcher(TranspositionTable tt)
             }
             if (value >= b) // Beta cutoff
             {
-                tt.Register(pos.ZobristHash, b, depth, TranspositionTable.Bound.Lower, moves[i]);
+                if (!Stop) tt.Register(pos.ZobristHash, b, depth, TranspositionTable.Bound.Lower, moves[i]);
                 ps.Pop();
                 return value;
             }
@@ -89,10 +132,10 @@ public class Searcher(TranspositionTable tt)
         {
             // If there are no legal moves and current side is in check, it's checkmate. The value of this node will
             // already be set to int.MinValue, because it was never overwritten.
-            return MoveGenerator.IsChecked(pos) ? -1000000000 : 0; // If not in check, it's stalemate.
+            return MoveGenerator.IsChecked(pos) ? Score.FromMatePly(ply) : 0; // If not in check, it's stalemate.
         }
         
-        tt.Register(pos.ZobristHash, value, depth, bound, bestMove);
+        if (!Stop) tt.Register(pos.ZobristHash, value, depth, bound, bestMove);
         return value;
     }
 
@@ -112,7 +155,18 @@ public class Searcher(TranspositionTable tt)
             ps.ApplyTop(ref pos);
             pv = TracePV(pos, ps);
             if (Stop) break;
-            if (pv.Count > 0) Console.WriteLine($"info nodes {nodesSearched} depth {depth} score cp {pv[0].Value} pv {string.Join(' ', pv.Select(e => UCI.FromMove(e.Move)))}");
+
+            if (pv.Count > 0)
+            {
+                string score = $"cp {pv[0].Value}";
+                if (Score.IsMate(pv[0].Value))
+                {
+                    int matePly = Score.ToMatePly(pv[0].Value);
+                    int mateMove = matePly / 2 + matePly % 2;
+                    score = $"mate {mateMove}";
+                }
+                Console.WriteLine($"info nodes {nodesSearched} depth {depth} score {score} pv {string.Join(' ', pv.Select(e => UCI.FromMove(e.Move)))}");
+            }
         }
         Console.WriteLine($"info nodes {nodesSearched}");
         Console.WriteLine($"bestmove {UCI.FromMove(pv[0].Move)}");
