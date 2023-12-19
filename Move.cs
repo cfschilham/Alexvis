@@ -1,12 +1,11 @@
 ﻿using System.Runtime.CompilerServices;
 
-namespace BughouseChess.Core;
+namespace ArexMotor;
 
 public struct Move
 {
     public static Move NullMove = new Move { _data = 0 };
     
-    [Flags]
     public enum Flag : byte
     {
         None = 0,
@@ -45,4 +44,6 @@ public struct Move
     public bool Equals(Move other) => _data == other._data;
     public override bool Equals(object? obj) => obj is Move other && Equals(other);
     public override int GetHashCode() => (int)_data;
+
+    public override string ToString() => UCI.FromMove(this);
 }

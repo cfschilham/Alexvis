@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
-using BughouseChess.Core;
+
+namespace ArexMotor;
 
 class Program
 {
@@ -24,7 +25,8 @@ class Program
     public static void Main()
     {
         Position pos = Position.StartingPosition();
-        Thread search;
+        TranspositionTable tt = new();
+        Searcher searcher = new(tt);
         string input = "";
         while (input != "quit")
         {
@@ -33,7 +35,6 @@ class Program
             if (parts.Length == 0) continue;
             if (parts[0] == "uci")
             {
-                MoveGenerator.Init();
                 Console.WriteLine("id name ArexMotor\nid author C.F. Schilham\nuciok");
             }
             else if (parts[0] == "isready") Console.WriteLine("readyok");
@@ -43,20 +44,20 @@ class Program
                 pos = Position.FromFEN(string.Join(' ', parts.Skip(2).Take(6)));
             else if (parts[0] == "go")
             {
-                new Thread(() => { NegaScout.GenerateMoveUCI(pos, 15);}).Start();
+                new Thread(() => { searcher.Search(pos, 40);}).Start();         
                 new Thread(() =>
                 {
-                    Thread.Sleep(15000);
-                    NegaScout.RequestStop();
+                    Thread.Sleep(5000);
+                    searcher.RequestStop();
                 }).Start();
             }
-            else if (parts[0] == "stop") NegaScout.RequestStop();
+            else if (parts[0] == "stop") searcher.RequestStop();
             if (parts.Length > 3 && parts[0] == "position" && parts.Contains("moves"))
             {
                 foreach (var uciMove in parts.SkipWhile(p => p != "moves").Skip(1))
                 {
                     List<Move> legalMoves = MoveGenerator.GenerateAllLegalMoves(pos);
-                    Move move = Bitboard.SelectMoveFromUCI(uciMove, legalMoves);
+                    Move move = UCI.SelectMove(uciMove, legalMoves);
                     pos.ApplyMove(move);
                 }
             }

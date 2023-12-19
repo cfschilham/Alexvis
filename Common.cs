@@ -1,4 +1,4 @@
-﻿namespace BughouseChess.Core;
+﻿namespace ArexMotor;
 
 public enum PieceType
 {
@@ -33,7 +33,7 @@ public enum Side
 
 public static class Sides
 {
-    public static readonly Side[] All =
+    public static readonly Side[] NotBoth =
     {
         Side.White,
         Side.Black,

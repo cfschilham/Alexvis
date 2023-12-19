@@ -1,4 +1,4 @@
-﻿namespace BughouseChess.Core;
+﻿namespace ArexMotor;
 
 public static class Magics
 {
