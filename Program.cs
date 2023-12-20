@@ -14,28 +14,36 @@ class Program
         while (input != "quit")
         {
             input = Console.ReadLine()!;
-            string[] parts = input.Split(' ');
-            if (parts.Length == 0) continue;
+            List<string> parts = input.Split(' ').ToList();
+            if (parts.Count == 0) continue;
             if (parts[0] == "uci")
             {
                 Console.WriteLine("id name Alexvis\nid author C.F. Schilham\nuciok");
             }
             else if (parts[0] == "isready") Console.WriteLine("readyok");
-            else if (parts.Length == 1 && parts[0] == "position") pos = Position.StartingPosition();
-            else if (parts.Length >= 2 && parts[0] == "position" && parts[1] == "startpos") pos = Position.StartingPosition();
-            else if (parts.Length > 2 && parts[0] == "position" && parts[1] == "fen")
+            else if (parts.Count == 1 && parts[0] == "position") pos = Position.StartingPosition();
+            else if (parts.Count >= 2 && parts[0] == "position" && parts[1] == "startpos") pos = Position.StartingPosition();
+            else if (parts.Count > 2 && parts[0] == "position" && parts[1] == "fen")
                 pos = Position.FromFEN(string.Join(' ', parts.Skip(2).Take(6)));
             else if (parts[0] == "go")
             {
-                new Thread(() => { searcher.Search(pos, 40);}).Start();         
-                new Thread(() =>
-                {
-                    Thread.Sleep(5000);
-                    searcher.RequestStop();
-                }).Start();
+                int? moveTime = null;
+                int? maxDepth = null;
+                int? wtime = null;
+                int? btime = null;
+                int? winc = null;
+                int? binc = null;
+                if (parts.Contains("movetime")) moveTime = int.Parse(parts[parts.IndexOf("movetime") + 1]);
+                if (parts.Contains("depth")) maxDepth = int.Parse(parts[parts.IndexOf("depth") + 1]);
+                if (parts.Contains("wtime")) wtime = int.Parse(parts[parts.IndexOf("wtime") + 1]);
+                if (parts.Contains("btime")) btime = int.Parse(parts[parts.IndexOf("btime") + 1]);
+                if (parts.Contains("winc")) winc = int.Parse(parts[parts.IndexOf("winc") + 1]);
+                if (parts.Contains("binc")) binc = int.Parse(parts[parts.IndexOf("binc") + 1]);
+                
+                searcher.StartThinking(pos, Console.Out, moveTime, maxDepth, wtime, btime, winc, binc);
             }
             else if (parts[0] == "stop") searcher.RequestStop();
-            if (parts.Length > 3 && parts[0] == "position" && parts.Contains("moves"))
+            if (parts.Count > 3 && parts[0] == "position" && parts.Contains("moves"))
             {
                 foreach (var uciMove in parts.SkipWhile(p => p != "moves").Skip(1))
                 {

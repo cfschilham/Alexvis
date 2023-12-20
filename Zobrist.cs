@@ -21,7 +21,7 @@ public static class Zobrist
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong PieceHash(int side, int pt, int idx) => _table[40 + pt * 64 + idx * (side + 1)];
+    public static ulong PieceHash(int side, int pt, int idx) => _table[40 + pt * 64 + idx + 384 * side];
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong FlagHash(Position.Flag f) => _table[(int)f];

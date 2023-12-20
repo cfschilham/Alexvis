@@ -128,14 +128,18 @@ public struct Position
         int to = move.GetTo();
         ulong fromSq = BB.FromIndex(from);
         ulong toSq = BB.FromIndex(to);
-        ZobristHash ^= Zobrist.FlagHash(Flags); // Unset old flags and en passant square from hash.
-        ZobristHash ^= Zobrist.EPCHash(EnPassantCapturable());
+        int epc = EnPassantCapturable();
+        ZobristHash ^= Zobrist.FlagHash(Flags); // Unset old flags
+        ZobristHash ^= epc != -1 ? Zobrist.EPCHash(epc) : 0;
 
-        if (pt == (int)PieceType.Pawn && Math.Abs(to-from) == 16)
+        if (pt == (int)PieceType.Pawn && Math.Abs(to - from) == 16)
+        {
             SetEnPassantCapturable(to);
+            ZobristHash ^= Zobrist.EPCHash(to);
+        }
         else SetEnPassantCapturable(-1);
 
-        ZobristHash ^= Zobrist.EPCHash(EnPassantCapturable());
+        
         // If this is a capturing move, remove opponent's piece.
         if (Move.HasFlag(f, Move.Flag.Capture | Move.Flag.EnPassant))
         {
@@ -143,8 +147,9 @@ public struct Position
             int capIdx = to;
             
             if (Move.HasFlag(f, Move.Flag.EnPassant)) capIdx -= PawnPush(); // Capture the piece behind the pawn.
-            State[opp][GetPieceType(opp, capIdx)] &= ~BB.FromIndex(capIdx);
-            ZobristHash ^= Zobrist.PieceHash(opp, GetPieceType(opp, capIdx), capIdx);
+            int capPt = GetPieceType(opp, capIdx);
+            State[opp][capPt] &= ~BB.FromIndex(capIdx);
+            ZobristHash ^= Zobrist.PieceHash(opp, capPt, capIdx);
             
             // Make captured position in opponent occupancy map empty.
             Occupancy[opp] &= ~BB.FromIndex(capIdx);
@@ -192,7 +197,6 @@ public struct Position
         Occupancy[(int)Side.Both] = Occupancy[us] | Occupancy[(int)Opp()];
         Flags ^= Flag.BlackTurn; // Flip turn flag.
         ZobristHash ^= Zobrist.FlagHash(Flags);
-        ZobristHash = Zobrist.FullHash(this);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
