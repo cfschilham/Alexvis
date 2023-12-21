@@ -299,8 +299,8 @@ public static class MoveGenerator
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void GenerateEnPassant(Position pos, Span<Move> moves, ref int mslen)
     {
-        if (pos.EnPassantCapturable() == null) return;
-        int capturable = (int)pos.EnPassantCapturable()!;
+        if (pos.EnPassantCapturable() == -1) return;
+        int capturable = pos.EnPassantCapturable();
         ulong pawns = pos.State[(int)pos.Us()][(int)PieceType.Pawn];
         int from;
         foreach (var offset in _epOffsets)
