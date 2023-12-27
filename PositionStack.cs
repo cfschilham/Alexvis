@@ -5,7 +5,7 @@ namespace Alexvis;
 
 public class PositionStack
 {
-    int _index = -1;
+    int _readIndex = -1;
     int _capacity;
     readonly Position[] _positions;
 
@@ -18,20 +18,20 @@ public class PositionStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Push(Position pos) => _positions[++_index].CopyFrom(pos);
+    public void Push(Position pos) => _positions[++_readIndex].CopyFrom(pos);
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Pop(ref Position pos) => pos.CopyFrom(_positions[_index--]);
+    public void Pop(ref Position pos) => pos.CopyFrom(_positions[_readIndex--]);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Pop() => _index--;
+    public void Pop() => _readIndex--;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void ApplyTop(ref Position pos) => pos.CopyFrom(_positions[_index]);
+    public void ApplyTop(ref Position pos) => pos.CopyFrom(_positions[_readIndex]);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int Size() => _index;
+    public int Size() => _readIndex;
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Clear() => _index = -1;
+    public void Clear() => _readIndex = -1;
 }

@@ -4,11 +4,13 @@ namespace Alexvis;
 
 public class Searcher(TranspositionTable tt)
 {
+    PositionStack _ps = new(200);
+    RepetitionStack _rs = new(200);
     int nodesSearched;
     volatile bool Stop;
     public void RequestStop() => Stop = true;
 
-    public int Quiesce(Position pos, int depth, int ply, PositionStack ps, int a, int b)
+    public int Quiesce(Position pos, int depth, int ply, int a, int b)
     {
         nodesSearched++;
         if (depth == 0) return Score.Static(pos, null, -1);
@@ -27,7 +29,7 @@ public class Searcher(TranspositionTable tt)
         }
         else mslen = MoveGenerator.GenerateAllMoves(pos, moves);
         
-        ps.Push(pos);
+        _ps.Push(pos);
         int value = int.MinValue;
         int numChildren = 0;
         for (int i = 0; i < mslen; i++)
@@ -35,21 +37,21 @@ public class Searcher(TranspositionTable tt)
             pos.ApplyMove(moves[i]);
             if (!MoveGenerator.IsLegal(pos))
             {
-                ps.ApplyTop(ref pos);
+                _ps.ApplyTop(ref pos);
                 continue;
             }
 
             numChildren++;
-            value = Math.Max(value, -Quiesce(pos, depth - 1, ply + 1, ps, -b, -a));
-            ps.ApplyTop(ref pos);
+            value = Math.Max(value, -Quiesce(pos, depth - 1, ply + 1, -b, -a));
+            _ps.ApplyTop(ref pos);
             a = Math.Max(a, value);
             if (value >= b)
             {
-                ps.Pop();
+                _ps.Pop();
                 return value;
             }
         }
-        ps.Pop();
+        _ps.Pop();
         
         // Stalemate can't be detected because if we're not in check, we don't generate all moves and thus we don't
         // perform a full search.
@@ -70,9 +72,10 @@ public class Searcher(TranspositionTable tt)
     }
     
     // Possible optimizations: order child nodes.
-    public int Eval(Position pos, int depth, PositionStack ps, int ply = 0, int a = int.MinValue+1, int b = int.MaxValue)
+    public int Eval(Position pos, int depth, int ply = 0, int a = int.MinValue+1, int b = int.MaxValue)
     {
         nodesSearched++;
+        if (_rs.IsRepeated(pos.ZobristHash, ply)) return 0;
 
         bool ok = tt.Lookup(pos.ZobristHash, out var te);
         if (ok && te.Depth >= depth)
@@ -87,11 +90,11 @@ public class Searcher(TranspositionTable tt)
         int mslen = MoveGenerator.GenerateAllMoves(pos, moves);
         
         if (depth == 0) 
-            return Quiesce(pos, 15, ply, ps, a, b);
+            return Quiesce(pos, 15, ply, a, b);
         
         if (ok && !te.Move.Equals(Move.NullMove)) OrderMoves(te.Move, moves, mslen);
         
-        ps.Push(pos);
+        _ps.Push(pos);
         int numChildren = 0;
         int value = int.MinValue;
         Move bestMove = Move.NullMove;
@@ -101,12 +104,13 @@ public class Searcher(TranspositionTable tt)
             pos.ApplyMove(moves[i]);
             if (!MoveGenerator.IsLegal(pos))
             {
-                ps.ApplyTop(ref pos);
+                _ps.ApplyTop(ref pos);
                 continue;
             }
             numChildren++;
-            value = Math.Max(value, -Eval(pos, depth - 1, ps, ply + 1, -b, -a));
-            ps.ApplyTop(ref pos);
+            _rs.Push(pos.ZobristHash, moves[i].GetPieceType() == PieceType.Pawn);
+            value = Math.Max(value, -Eval(pos, depth - 1, ply + 1, -b, -a));
+            _ps.ApplyTop(ref pos);
 
             
             if (value > a) // New best (PV) node has been found.
@@ -119,11 +123,11 @@ public class Searcher(TranspositionTable tt)
             if (value >= b) // Beta cutoff
             {
                 tt.Register(pos.ZobristHash, b, depth, TranspositionTable.Bound.Lower, moves[i]);
-                ps.Pop();
+                _ps.Pop();
                 return value;
             }
         }
-        ps.Pop();
+        _ps.Pop();
         if (numChildren == 0)
         {
             // If there are no legal moves and current side is in check, it's checkmate. The value of this node will
@@ -147,7 +151,7 @@ public class Searcher(TranspositionTable tt)
         List<TranspositionTable.Entry> pv = new();
         for (int depth = 0; depth <= maxDepth && !Stop; depth++)
         {
-            Eval(pos, depth, ps);
+            Eval(pos, depth);
             ps.ApplyTop(ref pos);
             pv = TracePV(pos, ps);
 
