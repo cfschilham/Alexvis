@@ -72,11 +72,11 @@ public class Searcher(TranspositionTable tt)
     }
     
     // Possible optimizations: order child nodes.
-    public int Eval(Position pos, int depth, int ply = 0, int a = int.MinValue+1, int b = int.MaxValue)
+    public int Eval(Position pos, int depth, int ply, bool irreversible, int a = int.MinValue+1, int b = int.MaxValue)
     {
         nodesSearched++;
         if (_rs.IsRepeated(pos.ZobristHash, ply)) return 0;
-
+        _rs.Push(pos.ZobristHash, irreversible);
         bool ok = tt.Lookup(pos.ZobristHash, out var te);
         if (ok && te.Depth >= depth)
         {
@@ -108,11 +108,11 @@ public class Searcher(TranspositionTable tt)
                 continue;
             }
             numChildren++;
-            _rs.Push(pos.ZobristHash, moves[i].GetPieceType() == PieceType.Pawn);
-            value = Math.Max(value, -Eval(pos, depth - 1, ply + 1, -b, -a));
+            
+            value = Math.Max(value, -Eval(pos, depth - 1, ply + 1, moves[i].GetPieceType() == PieceType.Pawn, -b, -a));
+
             _ps.ApplyTop(ref pos);
 
-            
             if (value > a) // New best (PV) node has been found.
             {
                 a = value;
@@ -123,11 +123,11 @@ public class Searcher(TranspositionTable tt)
             if (value >= b) // Beta cutoff
             {
                 tt.Register(pos.ZobristHash, b, depth, TranspositionTable.Bound.Lower, moves[i]);
-                _ps.Pop();
+                _ps.Pop(); _rs.Pop();
                 return value;
             }
         }
-        _ps.Pop();
+        _ps.Pop(); _rs.Pop();
         if (numChildren == 0)
         {
             // If there are no legal moves and current side is in check, it's checkmate. The value of this node will
@@ -145,15 +145,14 @@ public class Searcher(TranspositionTable tt)
         nodesSearched = 0;
         List<Move> moves = MoveGenerator.GenerateAllLegalMoves(pos);
         if (moves.Count == 0) return;
-
-        PositionStack ps = new(64);
-        ps.Push(pos);
+        
+        _ps.Push(pos);
         List<TranspositionTable.Entry> pv = new();
         for (int depth = 0; depth <= maxDepth && !Stop; depth++)
         {
-            Eval(pos, depth);
-            ps.ApplyTop(ref pos);
-            pv = TracePV(pos, ps);
+            Eval(pos, depth, _rs.Length(), false);
+            _ps.ApplyTop(ref pos);
+            pv = TracePV(pos);
 
             if (pv.Count > 0)
             {
@@ -175,16 +174,19 @@ public class Searcher(TranspositionTable tt)
         Stop = false;
     }
 
-    List<TranspositionTable.Entry> TracePV(Position pos, PositionStack ps)
+    public void AddHistory(Position pos, bool irreversible) => _rs.Push(pos.ZobristHash, irreversible);
+    public void ClearHistory() => _rs.Clear();
+
+    List<TranspositionTable.Entry> TracePV(Position pos)
     {
         List<TranspositionTable.Entry> pv = new (50);
-        ps.Push(pos);
+        _ps.Push(pos);
         while (tt.Lookup(pos.ZobristHash, out var head) && head.Type != TranspositionTable.Bound.Upper && pv.Count <= 50)
         {
             pv.Add(head);
             pos.ApplyMove(head.Move);
         }
-        ps.Pop(ref pos);
+       _ps.Pop(ref pos);
         return pv;
     }
 

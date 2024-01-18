@@ -21,10 +21,20 @@ class Program
                 Console.WriteLine("id name Alexvis\nid author C.F. Schilham\nuciok");
             }
             else if (parts[0] == "isready") Console.WriteLine("readyok");
-            else if (parts.Count == 1 && parts[0] == "position") pos = Position.StartingPosition();
-            else if (parts.Count >= 2 && parts[0] == "position" && parts[1] == "startpos") pos = Position.StartingPosition();
+            else if (parts[0] == "position")
+            {
+                searcher.ClearHistory();
+                if (parts.Count == 1 || parts.Count > 1 && parts[1] == "startpos")
+                {
+                    pos = Position.StartingPosition();
+                    searcher.AddHistory(pos, false);
+                }
+            }
             else if (parts.Count > 2 && parts[0] == "position" && parts[1] == "fen")
+            {
                 pos = Position.FromFEN(string.Join(' ', parts.Skip(2).Take(6)));
+                searcher.AddHistory(pos, false);
+            }
             else if (parts[0] == "go")
             {
                 int? moveTime = null;
@@ -50,6 +60,7 @@ class Program
                     List<Move> legalMoves = MoveGenerator.GenerateAllLegalMoves(pos);
                     Move move = UCI.SelectMove(uciMove, legalMoves);
                     pos.ApplyMove(move);
+                    searcher.AddHistory(pos, move.GetPieceType() == PieceType.Pawn);
                 }
             }
         }
