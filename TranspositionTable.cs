@@ -29,13 +29,11 @@ public class TranspositionTable
     {
         int i = TableIndex(hash);
         Entry old = _entries[i];
-        if (old.ZobristHash != 0)
-        {
-            if (old.Depth >= depth) return; // Entry exists and depth is better than new entry.
-            // if (old.Type == Bound.Exact && bound != Bound.Exact) return;
-        }
-
-        // if (hash == 15664360287765568410 && depth == 2) throw new Exception();
+        
+        // If entry exists but we are replacing a null move best move with a non-null best move replace anyways
+        // even if the depth of the new move is lower.
+        if (old.ZobristHash != 0 && !(old.Move.Equals(Move.NullMove) && !move.Equals(Move.NullMove)))
+            if (old.Depth > depth) return; // Entry exists and depth is better than new entry.
 
         _entries[i].ZobristHash = hash;
         _entries[i].Depth = (byte)depth;

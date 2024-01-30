@@ -233,7 +233,7 @@ public static class MoveGenerator
         {
             from = BB.LSBIndex(pawns);
             atks = PawnAttacks[us][from] & pos.Occupancy[opp];
-            atks &= us == (int)Side.White ? BB.NotRank8 : BB.NotRank1;
+            atks &= us == (int)Side.White ? BB.NotRank8 : BB.NotRank1; // These are promotions, not our responsibility.
             while (atks != 0)
             {
                 to = BB.LSBIndex(atks);
@@ -248,9 +248,11 @@ public static class MoveGenerator
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void GeneratePawnMoves(Position pos, Span<Move> moves, ref int mslen)
     {
-        ulong oneForward = pos.PawnPush(pos.State[(int)pos.Us()][(int)PieceType.Pawn]) & ~pos.Occupancy[(int)Side.Both];
-        ulong twoForward = pos.PawnPush(oneForward & (pos.Us() == Side.White ? BB.Rank3 : BB.Rank6));
-        oneForward &= pos.Us() == Side.White ? BB.NotRank8 : BB.NotRank1;
+        int us = (int)pos.Us();
+        ulong oneForward = pos.PawnPush(pos.State[us][(int)PieceType.Pawn], us) & ~pos.Occupancy[(int)Side.Both];
+        ulong twoForward = pos.PawnPush(oneForward & (us == (int)Side.White ? BB.Rank3 : BB.Rank6), us);
+        oneForward &= us == (int)Side.White ? BB.NotRank8 : BB.NotRank1;
+
         twoForward &= ~pos.Occupancy[(int)Side.Both];
 
         int from, to;

@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 
 namespace Alexvis;
 
@@ -8,8 +9,7 @@ class Program
     public static void Main()
     {
         Position pos = Position.StartingPosition();
-        TranspositionTable tt = new();
-        Searcher searcher = new(tt);
+        Searcher searcher = new();
         string input = "";
         while (input != "quit")
         {
@@ -19,6 +19,11 @@ class Program
             if (parts[0] == "uci")
             {
                 Console.WriteLine("id name Alexvis\nid author C.F. Schilham\nuciok");
+                // Ensure all static classes are initialized.
+                RuntimeHelpers.RunClassConstructor(typeof(Zobrist).TypeHandle);
+                RuntimeHelpers.RunClassConstructor(typeof(MoveGenerator).TypeHandle);
+                RuntimeHelpers.RunClassConstructor(typeof(Score).TypeHandle);
+
             }
             else if (parts[0] == "isready") Console.WriteLine("readyok");
             else if (parts[0] == "position")
@@ -27,13 +32,13 @@ class Program
                 if (parts.Count == 1 || parts.Count > 1 && parts[1] == "startpos")
                 {
                     pos = Position.StartingPosition();
-                    searcher.AddHistory(pos, false);
+                    searcher.AddHistory(pos.ZobristHash, false);
                 }
             }
             else if (parts.Count > 2 && parts[0] == "position" && parts[1] == "fen")
             {
                 pos = Position.FromFEN(string.Join(' ', parts.Skip(2).Take(6)));
-                searcher.AddHistory(pos, false);
+                searcher.AddHistory(pos.ZobristHash, false);
             }
             else if (parts[0] == "go")
             {
@@ -60,7 +65,7 @@ class Program
                     List<Move> legalMoves = MoveGenerator.GenerateAllLegalMoves(pos);
                     Move move = UCI.SelectMove(uciMove, legalMoves);
                     pos.ApplyMove(move);
-                    searcher.AddHistory(pos, move.GetPieceType() == PieceType.Pawn);
+                    searcher.AddHistory(pos.ZobristHash, RepetitionStack.IsIrreversible(move));
                 }
             }
         }

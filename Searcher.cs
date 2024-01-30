@@ -2,10 +2,11 @@
 
 namespace Alexvis;
 
-public class Searcher(TranspositionTable tt)
+public class Searcher
 {
     PositionStack _ps = new(200);
-    RepetitionStack _rs = new(200);
+    RepetitionStack _rs = new(512);
+    TranspositionTable _tt = new();
     int nodesSearched;
     volatile bool Stop;
     public void RequestStop() => Stop = true;
@@ -13,19 +14,21 @@ public class Searcher(TranspositionTable tt)
     public int Quiesce(Position pos, int depth, int ply, int a, int b)
     {
         nodesSearched++;
-        if (depth == 0) return Score.Static(pos, null, -1);
+        
+        int staticScore = Score.Static(pos, null, -1);
+        if (depth == 0) return staticScore;
         
         int mslen;
         Span<Move> moves = stackalloc Move[200];
+        
         bool isChecked = MoveGenerator.IsChecked(pos);
         if (!isChecked)
         {
-            int stnd = Score.Static(pos, null, -1);
-            if (stnd >= b) return stnd;
-            a = Math.Max(stnd, a);
+            if (staticScore >= b) return staticScore;
+            a = Math.Max(staticScore, a);
             
             mslen = MoveGenerator.GenerateCapturesAndPromotions(pos, moves);
-            if (mslen == 0) return stnd;
+            if (mslen == 0) return staticScore;
         }
         else mslen = MoveGenerator.GenerateAllMoves(pos, moves);
         
@@ -54,8 +57,9 @@ public class Searcher(TranspositionTable tt)
         _ps.Pop();
         
         // Stalemate can't be detected because if we're not in check, we don't generate all moves and thus we don't
-        // perform a full search.
-        if (numChildren == 0 && isChecked) Score.FromMatePly(ply);
+        // perform a full search. Therefore, if there are no children and we're not in check, we just return the static
+        // evaluation.
+        if (numChildren == 0 && isChecked) return isChecked ? Score.FromMatePly(ply) : staticScore;
         return value;
     }
 
@@ -72,12 +76,11 @@ public class Searcher(TranspositionTable tt)
     }
     
     // Possible optimizations: order child nodes.
-    public int Eval(Position pos, int depth, int ply, bool irreversible, int a = int.MinValue+1, int b = int.MaxValue)
+    int Eval(Position pos, int depth, int ply, bool irreversible, int a = int.MinValue+1, int b = int.MaxValue)
     {
         nodesSearched++;
         if (_rs.IsRepeated(pos.ZobristHash, ply)) return 0;
-        _rs.Push(pos.ZobristHash, irreversible);
-        bool ok = tt.Lookup(pos.ZobristHash, out var te);
+        bool ok = _tt.Lookup(pos.ZobristHash, out var te);
         if (ok && te.Depth >= depth)
         {
             if (te.Type == TranspositionTable.Bound.Exact) return te.Value;
@@ -94,7 +97,7 @@ public class Searcher(TranspositionTable tt)
         
         if (ok && !te.Move.Equals(Move.NullMove)) OrderMoves(te.Move, moves, mslen);
         
-        _ps.Push(pos);
+        _rs.Push(pos.ZobristHash, irreversible); _ps.Push(pos);
         int numChildren = 0;
         int value = int.MinValue;
         Move bestMove = Move.NullMove;
@@ -109,7 +112,7 @@ public class Searcher(TranspositionTable tt)
             }
             numChildren++;
             
-            value = Math.Max(value, -Eval(pos, depth - 1, ply + 1, moves[i].GetPieceType() == PieceType.Pawn, -b, -a));
+            value = Math.Max(value, -Eval(pos, depth - 1, ply + 1, RepetitionStack.IsIrreversible(moves[i]), -b, -a));
 
             _ps.ApplyTop(ref pos);
 
@@ -122,7 +125,7 @@ public class Searcher(TranspositionTable tt)
             if (Stop) depth = 1;
             if (value >= b) // Beta cutoff
             {
-                tt.Register(pos.ZobristHash, b, depth, TranspositionTable.Bound.Lower, moves[i]);
+                _tt.Register(pos.ZobristHash, b, depth, TranspositionTable.Bound.Lower, moves[i]);
                 _ps.Pop(); _rs.Pop();
                 return value;
             }
@@ -135,7 +138,7 @@ public class Searcher(TranspositionTable tt)
             return MoveGenerator.IsChecked(pos) ? Score.FromMatePly(ply) : 0; // If not in check, it's stalemate.
         }
         
-        tt.Register(pos.ZobristHash, value, depth, bound, bestMove);
+        _tt.Register(pos.ZobristHash, value, depth, bound, bestMove);
         return value;
     }
 
@@ -148,9 +151,11 @@ public class Searcher(TranspositionTable tt)
         
         _ps.Push(pos);
         List<TranspositionTable.Entry> pv = new();
-        for (int depth = 0; depth <= maxDepth && !Stop; depth++)
+        for (int depth = 1; depth <= maxDepth && !Stop; depth++)
         {
-            Eval(pos, depth, _rs.Length(), false);
+            // Ply is repetition stack length minus 1 because the starting position is also recorded in the repetition
+            // stack, but doesn't count as a move.
+            Eval(pos, depth, _rs.Length() - 1, false);
             _ps.ApplyTop(ref pos);
             pv = TracePV(pos);
 
@@ -174,19 +179,20 @@ public class Searcher(TranspositionTable tt)
         Stop = false;
     }
 
-    public void AddHistory(Position pos, bool irreversible) => _rs.Push(pos.ZobristHash, irreversible);
+    // Resulting position and the move that caused it.
+    public void AddHistory(ulong hash, bool irreversible) => _rs.Push(hash, irreversible);
     public void ClearHistory() => _rs.Clear();
 
     List<TranspositionTable.Entry> TracePV(Position pos)
     {
         List<TranspositionTable.Entry> pv = new (50);
         _ps.Push(pos);
-        while (tt.Lookup(pos.ZobristHash, out var head) && head.Type != TranspositionTable.Bound.Upper && pv.Count <= 50)
+        while (_tt.Lookup(pos.ZobristHash, out var head) && head.Type != TranspositionTable.Bound.Upper && pv.Count <= 50)
         {
             pv.Add(head);
             pos.ApplyMove(head.Move);
         }
-       _ps.Pop(ref pos);
+        _ps.Pop(ref pos);
         return pv;
     }
 

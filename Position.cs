@@ -2,27 +2,23 @@
 
 namespace Alexvis;
 
-// Represents a single chess position. A new one is created with each move. The index works as follows:
-// 
-// 8  56 57 58 59 60 61 62 63
-// 7  48 49 50 51 52 53 54 55
-// 6  40 41 42 43 44 45 46 47
-// 5  32 33 34 35 36 37 38 39
-// 4  24 25 26 27 28 29 30 31
-// 3  16 17 18 19 20 21 22 23
-// 2  08 09 10 11 12 13 14 15
-// 1  00 01 02 03 04 05 06 07
-//    A  B  C  D  E  F  G  H
-//
-// So index 0 is equal to A1, etc. Note, however, that index 0 also represents the most significant bit of the ulong. So
-// _state[0] << 63 would left shift away all bits except the one representing H8 or index 63 (of white pawns in this
-// case). 
-//
-// TODO
-// 50 move rule
-// 3 fold repetition
-// fix checkmate bug?
-//
+/// <summary>
+/// Represents a single chess position. A new one is created with each move. The index works as follows:
+/// 
+/// <code>
+/// 8  56 57 58 59 60 61 62 63
+/// 7  48 49 50 51 52 53 54 55
+/// 6  40 41 42 43 44 45 46 47
+/// 5  32 33 34 35 36 37 38 39
+/// 4  24 25 26 27 28 29 30 31
+/// 3  16 17 18 19 20 21 22 23
+/// 2  08 09 10 11 12 13 14 15
+/// 1  00 01 02 03 04 05 06 07
+///    A  B  C  D  E  F  G  H
+/// </code>
+///
+/// So index 0 is equal to A1, etc. 
+/// </summary>
 public struct Position
 {
     public enum Flag : byte
@@ -51,7 +47,7 @@ public struct Position
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Side OppOf(Side s) => 1 - s;
 
-    public void GenerateOccupancy()
+    void GenerateOccupancy()
     {
         Occupancy[(int)Side.White] = State[(int)Side.White][(int)PieceType.Pawn] | State[(int)Side.White][(int)PieceType.Knight] |
                     State[(int)Side.White][(int)PieceType.Bishop] | State[(int)Side.White][(int)PieceType.Rook] |
@@ -75,8 +71,8 @@ public struct Position
     
     public int GetPieceType(int s, int i)
     {
-        foreach (var pt in PieceTypes.NotNone)
-            if (BB.IsSet(State[s][(int)pt], i)) return (int)pt;
+        foreach (var pt in PieceTypes.IntNotNone)
+            if (BB.IsSet(State[s][pt], i)) return pt;
         return (int)PieceType.None;
     }
 
@@ -111,13 +107,20 @@ public struct Position
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ulong PawnPush(ulong bb) => Us() == Side.White ? bb << 8 : bb >> 8;
+    public ulong PawnPush(ulong bb) => PawnPush(bb, (int)Us());
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ulong PawnPush(ulong bb, int side) => side == (int)Side.White ? bb << 8 : bb >> 8;
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int PawnPush() => PawnPush(Us());
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int PawnPush(Side s) => s == Side.White ? 8 : -8;
+    public static int PawnPush(Side s) => PawnPush((int)s);
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int PawnPush(int s) => s == (int)Side.White ? 8 : -8;
+
 
     public void ApplyMove(Move move)
     {
@@ -145,9 +148,14 @@ public struct Position
         {
             int opp = (int)Opp();
             int capIdx = to;
+            int capPt;
+
+            if (Move.HasFlag(f, Move.Flag.EnPassant))
+            {
+                capIdx -= PawnPush(); // Capture the piece behind the pawn.
+                capPt = (int)PieceType.Pawn;
+            } else capPt = GetPieceType(opp, capIdx);
             
-            if (Move.HasFlag(f, Move.Flag.EnPassant)) capIdx -= PawnPush(); // Capture the piece behind the pawn.
-            int capPt = GetPieceType(opp, capIdx);
             State[opp][capPt] &= ~BB.FromIndex(capIdx);
             ZobristHash ^= Zobrist.PieceHash(opp, capPt, capIdx);
             
@@ -180,19 +188,10 @@ public struct Position
             State[us][(int)PieceType.Rook] |= fromTo.Item2;
             ZobristHash ^= Zobrist.PieceHash(us, (int)PieceType.Rook, BB.LSBIndex(fromTo.Item2));
             Occupancy[us] |= fromTo.Item2;
-            
-            Flags &= us == (int)Side.White ? ~Flag.CastleRightsW : ~Flag.CastleRightsB;
         }
 
-        switch (pt)
-        {
-            case (int)PieceType.King:
-                Flags &= us == (int)Side.White ? ~Flag.CastleRightsW : ~Flag.CastleRightsB;
-                break;
-            case (int)PieceType.Rook:
-                Flags &= ~MoveGenerator.RookCastleFlag(from);
-                break;
-        }
+        if (pt == (int)PieceType.King) Flags &= us == (int)Side.White ? ~Flag.CastleRightsW : ~Flag.CastleRightsB;
+        if (pt == (int)PieceType.Rook) Flags &= ~MoveGenerator.RookCastleFlag(from);
 
         Occupancy[(int)Side.Both] = Occupancy[us] | Occupancy[(int)Opp()];
         Flags ^= Flag.BlackTurn; // Flip turn flag.
@@ -216,6 +215,7 @@ public struct Position
         {
             State = new [] { new ulong[6], new ulong[6] }, 
             Occupancy = new ulong[3],
+            _enPassantCapturable = 64,
         };
     }
     
@@ -257,14 +257,14 @@ public struct Position
         string[] ranks = parts[0].Split('/');
         Array.Reverse(ranks); // Needs to start from rank 1 and increase
 
-        for (int r = 0; r < 8; ++r)
+        for (int rank = 0; rank < 8; ++rank)
         {
-            int f = 0;
-            foreach (var c in ranks[r])
+            int file = 0;
+            foreach (var c in ranks[rank])
             {
                 if (char.IsDigit(c))
                 {
-                    f += int.Parse(c.ToString());
+                    file += int.Parse(c.ToString());
                     continue;
                 }
                 PieceType pt;
@@ -280,9 +280,8 @@ public struct Position
                     default: throw new Exception("Invalid character encountered in FEN string.");
                 }
                 side = char.IsLower(c) ? Side.Black : Side.White;
-                pos.State[(int)side][(int)pt] |= BB.FromIndex(BB.Index(f, r));
-                pos.Occupancy[(int)side] |= BB.FromIndex(BB.Index(f, r));
-                f++;
+                pos.State[(int)side][(int)pt] |= BB.FromIndex(BB.Index(file, rank));
+                file++;
             }
         }
 

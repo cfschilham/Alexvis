@@ -13,6 +13,23 @@ public enum PieceType
 
 static class PieceTypes
 {
+    public static readonly int[] IntNotNone =
+    {
+        (int)PieceType.Pawn,
+        (int)PieceType.Knight,
+        (int)PieceType.Bishop,
+        (int)PieceType.Rook,
+        (int)PieceType.Queen,
+        (int)PieceType.King,
+    };
+    public static readonly PieceType[] NotNoneOrKing =
+    {
+        PieceType.Pawn,
+        PieceType.Knight,
+        PieceType.Bishop,
+        PieceType.Rook,
+        PieceType.Queen,
+    };
     public static readonly PieceType[] NotNone =
     {
         PieceType.Pawn,
@@ -37,6 +54,11 @@ public static class Sides
     {
         Side.White,
         Side.Black,
+    };
+    public static readonly int[] IntNotBoth =
+    {
+        (int)Side.White,
+        (int)Side.Black,
     };
 }
 
