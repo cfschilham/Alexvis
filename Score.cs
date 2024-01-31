@@ -86,7 +86,7 @@ public static class Score
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static int PiecePositionValue(int s, int pt, int i) => PiecePositionValueTable[s * 6 + pt][i];
     
-    public static int Static(Position pos, Span<Move> moves, int mslen)
+    public static int Static(Position pos)
     {
         int value = 0;
         ulong st;

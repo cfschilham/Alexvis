@@ -201,9 +201,21 @@ public struct Position
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void CopyFrom(Position other)
     {
-        Buffer.BlockCopy(other.State[(int)Side.White], 0, State[(int)Side.White], 0, 48);
-        Buffer.BlockCopy(other.State[(int)Side.Black], 0, State[(int)Side.Black], 0, 48);
-        Buffer.BlockCopy(other.Occupancy, 0, Occupancy, 0, 24);
+        State[0][0] = other.State[0][0];
+        State[0][1] = other.State[0][1];
+        State[0][2] = other.State[0][2];
+        State[0][3] = other.State[0][3];
+        State[0][4] = other.State[0][4];
+        State[0][5] = other.State[0][5];
+        State[1][0] = other.State[1][0];
+        State[1][1] = other.State[1][1];
+        State[1][2] = other.State[1][2];
+        State[1][3] = other.State[1][3];
+        State[1][4] = other.State[1][4];
+        State[1][5] = other.State[1][5];
+        Occupancy[0] = other.Occupancy[0];
+        Occupancy[1] = other.Occupancy[1];
+        Occupancy[2] = other.Occupancy[2];
         _enPassantCapturable = other._enPassantCapturable;
         Flags = other.Flags;
         ZobristHash = other.ZobristHash;

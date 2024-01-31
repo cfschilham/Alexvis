@@ -15,7 +15,7 @@ public class Searcher
     {
         nodesSearched++;
         
-        int staticScore = Score.Static(pos, null, -1);
+        int staticScore = Score.Static(pos);
         if (depth == 0) return staticScore;
         
         int mslen;
