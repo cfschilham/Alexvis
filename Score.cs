@@ -84,7 +84,7 @@ public static class Score
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static int PiecePositionValue(Side s, PieceType pt, int i) => PiecePositionValueTable[(s == Side.White ? 0 : 6) + (int)pt][i];
+    static int PiecePositionValue(int s, int pt, int i) => PiecePositionValueTable[s * 6 + pt][i];
     
     public static int Static(Position pos, Span<Move> moves, int mslen)
     {
@@ -93,25 +93,21 @@ public static class Score
         int us = (int)pos.Us();
         int idx;
         
-        foreach (var side in Sides.NotBoth)
-            foreach (var pt in PieceTypes.NotNone)
+        foreach (var side in Sides.IntNotBoth)
+            foreach (var pt in PieceTypes.IntNotNone)
             {
-                st = pos.State[(int)side][(int)pt];
-                if (pt != PieceType.King) value += MaterialValueTable[(int)pt] * BB.PopCount(st) * (us == (int)side ? 1 : -1);
+                st = pos.State[side][pt];
+                if (pt != (int)PieceType.King) value += MaterialValueTable[pt] * BB.PopCount(st) * (us == side ? 1 : -1);
 
                 while (st != 0)
                 {
                     idx = BB.LSBIndex(st);
-                    value += PiecePositionValue(side, pt, idx) * (us == (int)side ? 1 : -1);
+                    value += PiecePositionValue(side, pt, idx) * (us == side ? 1 : -1);
                     st ^= BB.FromIndex(idx);
                 }
             }
 
-        if (mslen == -1) value += BB.PopCount(pos.Occupancy[us]) * 2; // Estimation in case we don't know the available moves.
-        for (int i = 0; i < mslen; i++)
-            if (moves[i].HasFlag(Move.Flag.Capture)) value++;
-
-        return value + mslen >> 2;
+        return value;
     }
 
     public static int FromMatePly(int ply) => -1000000000 + ply;
