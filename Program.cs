@@ -34,11 +34,11 @@ class Program
                     pos = Position.StartingPosition();
                     searcher.AddHistory(pos.ZobristHash, false);
                 }
-            }
-            else if (parts.Count > 2 && parts[0] == "position" && parts[1] == "fen")
-            {
-                pos = Position.FromFEN(string.Join(' ', parts.Skip(2).Take(6)));
-                searcher.AddHistory(pos.ZobristHash, false);
+                if (parts.Count > 2 && parts[0] == "position" && parts[1] == "fen")
+                {
+                    pos = Position.FromFEN(string.Join(' ', parts.Skip(2).Take(6)));
+                    searcher.AddHistory(pos.ZobristHash, false);
+                }
             }
             else if (parts[0] == "go")
             {
